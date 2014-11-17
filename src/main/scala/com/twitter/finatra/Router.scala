@@ -1,3 +1,18 @@
+/**
+ * Copyright (C) 2012 Twitter Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.twitter.finatra
 
 import com.twitter.finagle.http.{Request => FinagleRequest, Response => FinagleResponse}
@@ -29,7 +44,7 @@ class Router(controller: Controller) {
     val req = RequestAdapter(request)
 
     findRouteAndMatch(req, method) match {
-      case Some((method, pattern, callback)) =>
+      case Some((method, definition, pattern, callback)) =>
         Some(ResponseAdapter(req, callback(req)))
       case None => orCallback(request)
     }
@@ -42,20 +57,15 @@ class Router(controller: Controller) {
   }
 
   def findRouteAndMatch(request: Request, method: HttpMethod):
-    Option[(HttpMethod, PathPattern, (Request) => Future[ResponseBuilder])] = {
+    Option[(HttpMethod, String, PathPattern, (Request) => Future[ResponseBuilder])] = {
 
-    var thematch: Option[Map[_,_]] = None
-
-    controller.routes.vector.find( route => route match {
-      case (_method, pattern, callback) =>
-        thematch = pattern(request.path.split('?').head)
-        if(thematch.orNull != null && _method == method) {
-          thematch.orNull.foreach(xs => extractParams(request, xs))
-          true
-        } else {
-          false
+    controller.routes.vector.find{
+      case (_method, definition, pattern, callback) =>
+        pattern(request.path.split('?').head) match {
+          case Some(thematch) if _method == method => thematch.foreach((xs: Tuple2[_, _]) => extractParams(request, xs)); true
+          case _  => false
         }
-    })
+    }
   }
 
   def internalDispatch (
@@ -76,7 +86,7 @@ class Router(controller: Controller) {
     val req = new Request(finagleRequest)
 
     findRouteAndMatch(req, method) match {
-      case Some((_method, pattern, callback)) =>
+      case Some((_method, definition, pattern, callback)) =>
         callback(req)
       case None => controller.render.notFound.toFuture
     }
